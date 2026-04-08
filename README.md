@@ -14,23 +14,16 @@ Build a low-operations analytics pipeline that can ingest clickstream events, st
 - Athena workgroup with enforced settings
 
 ## Repository Structure
-- `cloudformation/` – CloudFormation YAML templates
-- `docs/` – notes and architecture explanations
+- `cloudformation/` – CloudFormation templates
+- `docs/` – architecture, example queries, and deployment notes
 
 ## Planned Next Steps
-- Add API Gateway as the event ingestion layer
+- Add API Gateway as the ingestion layer
 - Add Lambda transformation for event enrichment
 - Add Athena table DDL examples
-- Add architecture diagram
-- Add QuickSight notes
+- Add dashboard notes for QuickSight
 
 ## Security Notes
 - No secrets are stored in this repository
-- Environment-specific values should be passed as parameters
-- Query results should be written to a controlled S3 location
-
-## What I Learned
-- How to define analytics infrastructure in CloudFormation YAML
-- How to store streaming events in S3 efficiently
-- How to isolate analytics queries with Athena workgroups
-- How to structure an analytics project for GitHub and CV use
+- Environment-specific values are parameterized
+- Athena results are written to a controlled S3 location
