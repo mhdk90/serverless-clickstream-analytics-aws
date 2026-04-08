@@ -1,10 +1,35 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Serverless clickstream analytics starter with Firehose, S3, and Athena
+Description: Serverless clickstream analytics pipeline with Firehose, S3, and Athena
 
 Parameters:
   ProjectName:
     Type: String
     Default: clickstream-analytics
+
+  FirehoseStreamName:
+    Type: String
+    Default: clickstream-delivery-stream
+    Description: Name of the Firehose delivery stream
+
+  AthenaWorkGroupName:
+    Type: String
+    Default: clickstream-analytics-wg
+    Description: Name of the Athena workgroup
+
+  RawEventsPrefix:
+    Type: String
+    Default: raw/
+    Description: Prefix for raw clickstream data in the raw events bucket
+
+  FirehoseErrorPrefix:
+    Type: String
+    Default: errors/
+    Description: Prefix for Firehose delivery errors in the raw events bucket
+
+  AthenaResultsPrefix:
+    Type: String
+    Default: athena-results/
+    Description: Prefix for Athena query results in the analytics results bucket
 
 Resources:
   RawEventsBucket:
@@ -18,11 +43,18 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-raw-events'
         - Key: Purpose
           Value: clickstream-raw
+        - Key: ManagedBy
+          Value: CloudFormation
 
   AnalyticsResultsBucket:
     Type: AWS::S3::Bucket
@@ -35,6 +67,11 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
       LifecycleConfiguration:
         Rules:
           - Id: expire-old-athena-results
@@ -45,11 +82,13 @@ Resources:
           Value: !Sub '${ProjectName}-analytics-results'
         - Key: Purpose
           Value: analytics-results
+        - Key: ManagedBy
+          Value: CloudFormation
 
   FirehoseDeliveryRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub '${ProjectName}-firehose-role'
+      Description: IAM role used by Firehose to deliver clickstream data to S3
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -79,17 +118,24 @@ Resources:
                 Action:
                   - logs:PutLogEvents
                 Resource: '*'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-firehose-role'
+        - Key: Purpose
+          Value: firehose-delivery
+        - Key: ManagedBy
+          Value: CloudFormation
 
   ClickstreamDeliveryStream:
     Type: AWS::KinesisFirehose::DeliveryStream
     Properties:
-      DeliveryStreamName: !Sub '${ProjectName}-delivery-stream'
+      DeliveryStreamName: !Ref FirehoseStreamName
       DeliveryStreamType: DirectPut
       S3DestinationConfiguration:
         BucketARN: !GetAtt RawEventsBucket.Arn
         RoleARN: !GetAtt FirehoseDeliveryRole.Arn
-        Prefix: raw/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/
-        ErrorOutputPrefix: errors/!{firehose:error-output-type}/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/
+        Prefix: !Sub '${RawEventsPrefix}year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/'
+        ErrorOutputPrefix: !Sub '${FirehoseErrorPrefix}!{firehose:error-output-type}/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/'
         BufferingHints:
           IntervalInSeconds: 60
           SizeInMBs: 5
@@ -98,18 +144,32 @@ Resources:
           Enabled: true
           LogGroupName: !Sub '/aws/kinesisfirehose/${ProjectName}'
           LogStreamName: s3-delivery
+      Tags:
+        - Key: Name
+          Value: !Ref FirehoseStreamName
+        - Key: Purpose
+          Value: clickstream-ingestion
+        - Key: ManagedBy
+          Value: CloudFormation
 
   AthenaWorkGroup:
     Type: AWS::Athena::WorkGroup
     Properties:
-      Name: !Sub '${ProjectName}-wg'
+      Name: !Ref AthenaWorkGroupName
       Description: Athena workgroup for clickstream analytics
       State: ENABLED
+      Tags:
+        - Key: Name
+          Value: !Ref AthenaWorkGroupName
+        - Key: Purpose
+          Value: clickstream-query
+        - Key: ManagedBy
+          Value: CloudFormation
       WorkGroupConfiguration:
         EnforceWorkGroupConfiguration: true
         PublishCloudWatchMetricsEnabled: true
         ResultConfiguration:
-          OutputLocation: !Sub 's3://${AnalyticsResultsBucket}/athena-results/'
+          OutputLocation: !Sub 's3://${AnalyticsResultsBucket}/${AthenaResultsPrefix}'
           EncryptionConfiguration:
             EncryptionOption: SSE_S3
 
